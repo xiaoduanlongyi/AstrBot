@@ -33,6 +33,11 @@ PERSONAL_WECHAT_CONFIG_METADATA = {
         "type": "int",
         "hint": "通用 API 请求超时参数。",
     },
+    "weixin_oc_text_item_character_limit": {
+        "description": "Text segment character limit",
+        "type": "int",
+        "hint": "Long outgoing text is split before sending to avoid Weixin OC sendmessage failures.",
+    },
     "weixin_oc_token": {
         "description": "登录后 token（可留空）",
         "type": "string",
@@ -418,6 +423,7 @@ CONFIG_METADATA_2 = {
                         "weixin_oc_qr_poll_interval": 1,
                         "weixin_oc_long_poll_timeout_ms": 35_000,
                         "weixin_oc_api_timeout_ms": 120_000,
+                        "weixin_oc_text_item_character_limit": 450,
                     },
                     "飞书(Lark)": {
                         "id": "lark",

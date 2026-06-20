@@ -109,6 +109,7 @@ class WeixinOCAdapter(Platform):
     REPLY_MATCH_WINDOW_MS = 60_000
     RECENT_SESSION_CACHE_TTL_S = 1_800
     MAX_RECENT_MESSAGE_SESSIONS = 500
+    TEXT_ITEM_CHARACTER_LIMIT = 450
 
     def __init__(
         self,
@@ -169,6 +170,11 @@ class WeixinOCAdapter(Platform):
             "weixin_oc_max_recent_message_sessions",
             self.MAX_RECENT_MESSAGE_SESSIONS,
             1,
+        )
+        self._text_item_character_limit = self._get_int_config(
+            "weixin_oc_text_item_character_limit",
+            self.TEXT_ITEM_CHARACTER_LIMIT,
+            100,
         )
         self._recent_messages: dict[str, WeixinOCRecentSessionCache] = {}
         self._typing_keepalive_interval_s = max(
@@ -1026,12 +1032,9 @@ class WeixinOCAdapter(Platform):
             return False
 
         if text:
-            await self._send_items_to_session(
-                user_id,
-                [self._build_plain_text_item(text)],
-                cache_components=[Plain(text)],
-                cache_message_str=text,
-            )
+            text_sent = await self._send_to_session(user_id, text)
+            if not text_sent:
+                return False
         return await self._send_items_to_session(
             user_id,
             [media_item],
@@ -1620,10 +1623,57 @@ class WeixinOCAdapter(Platform):
                 self.meta().id,
             )
             return False
-        return await self._send_items_to_session(
-            user_id,
-            [self._build_plain_text_item(text)],
-        )
+        text = text.strip()
+        text_parts = [text]
+        if len(text) > self._text_item_character_limit:
+            text_parts = []
+            remaining = text
+            separators = (
+                "\n\n",
+                "\n",
+                "。",
+                "！",
+                "？",
+                "；",
+                "，",
+                ". ",
+                "! ",
+                "? ",
+                "; ",
+                ", ",
+                " ",
+            )
+            while len(remaining) > self._text_item_character_limit:
+                window = remaining[: self._text_item_character_limit]
+                split_at = -1
+                for separator in separators:
+                    index = window.rfind(separator)
+                    if index >= self._text_item_character_limit // 3:
+                        split_at = index + len(separator)
+                        break
+                if split_at <= 0:
+                    split_at = self._text_item_character_limit
+                part = remaining[:split_at].strip()
+                if part:
+                    text_parts.append(part)
+                remaining = remaining[split_at:].strip()
+            if remaining:
+                text_parts.append(remaining)
+            logger.debug(
+                "weixin_oc(%s): split outbound text into %s parts for %s",
+                self.meta().id,
+                len(text_parts),
+                user_id,
+            )
+
+        for part in text_parts:
+            sent = await self._send_items_to_session(
+                user_id,
+                [self._build_plain_text_item(part)],
+            )
+            if not sent:
+                return False
+        return True
 
     async def send_by_session(
         self,
